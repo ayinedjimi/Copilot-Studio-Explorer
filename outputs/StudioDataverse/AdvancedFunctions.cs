@@ -3,10 +3,24 @@ using System.Text.RegularExpressions;
 namespace StudioDataverse;
 public record CustomRule(string Id,string Name,string Field,string Operation,string Value);
 public record CustomRuleResult(CustomRule Rule,Guid AgentId,string Agent,FindingState State,string Evidence);
-public record ScenarioCase(string Id,string Title,string Question,string Expected,string Observed,Guid AgentId=default);
+public record ScenarioRun(DateTimeOffset Time,double DurationSeconds,string Response,string Status,string Error="");
+public record ScenarioCase(string Id,string Title,string Question,string Expected,string Observed,Guid AgentId=default,string MatchText="",string Verification="Contient",List<ScenarioRun>? Runs=null);
 public record SearchHit(Guid AgentId,string Agent,string Object,string Field,string Excerpt);
 public static class AdvancedFunctions
 {
+    public static List<CustomRule> ParseImportedRules(string json)
+    {
+        var raw=JsonSerializer.Deserialize<List<CustomRule>>(json,new JsonSerializerOptions{PropertyNameCaseInsensitive=true})??throw new InvalidOperationException("Le fichier doit contenir une liste de règles.");
+        if(raw.Count is <1 or >100)throw new InvalidOperationException("Le fichier doit contenir entre 1 et 100 règles.");
+        var rules=new List<CustomRule>();var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach(var rule in raw){
+            if(rule==null||string.IsNullOrWhiteSpace(rule.Name)||string.IsNullOrWhiteSpace(rule.Value)||rule.Name.Length>120||rule.Value.Length>1000)throw new InvalidOperationException("Chaque règle doit avoir un nom et un texte non vides.");
+            if(rule.Field is not ("Nom" or "Instructions" or "Composants" or "Flux")||rule.Operation is not ("Contient" or "Ne contient pas" or "Commence par"))throw new InvalidOperationException("Champ ou opérateur de règle inconnu.");
+            var name=rule.Name.Trim();if(!seen.Add(name))throw new InvalidOperationException("Le fichier contient plusieurs règles de même nom : "+name);
+            rules.Add(new(Guid.NewGuid().ToString("N"),name,rule.Field,rule.Operation,rule.Value.Trim()));
+        }
+        return rules;
+    }
     public static List<CustomRuleResult> EvaluateRules(IEnumerable<CustomRule> rules,IEnumerable<AgentInspection> agents)
     {
         var results=new List<CustomRuleResult>();
@@ -34,7 +48,7 @@ public static class AdvancedFunctions
         }
         return hits;
     }
-    public static string ScenarioStatus(ScenarioCase item)=>string.IsNullOrWhiteSpace(item.Observed)?"Non évalué":string.IsNullOrWhiteSpace(item.Expected)?"Attendu manquant":item.Observed.Contains(item.Expected,StringComparison.OrdinalIgnoreCase)?"Correspondance textuelle":"À examiner";
+    public static string ScenarioStatus(ScenarioCase item)=>string.IsNullOrWhiteSpace(item.Observed)?"Non évalué":item.Verification=="Manuel"?"Jugement manuel":string.IsNullOrWhiteSpace(item.MatchText)&&string.IsNullOrWhiteSpace(item.Expected)?"Attendu manquant":item.Observed.Contains(string.IsNullOrWhiteSpace(item.MatchText)?item.Expected:item.MatchText,StringComparison.OrdinalIgnoreCase)?"Correspondance textuelle":"À examiner";
     public static string Diagnostic(Exception error)=>error is HttpRequestException http ? http.StatusCode switch {
         System.Net.HttpStatusCode.Unauthorized=>"401 : reconnectez-vous et vérifiez le consentement Dataverse.",
         System.Net.HttpStatusCode.Forbidden=>"403 : vérifiez les rôles de sécurité et les droits sur les tables.",
@@ -66,7 +80,7 @@ public sealed partial class ExplorerLocalStore
     public List<CustomRule> Rules()=>ReadNamed<CustomRule>("rules");
     public Task SaveRules(List<CustomRule> rules)=>SaveNamed("rules",rules.Select(r=>r with{Name=ExplorerRedaction.Safe(r.Name),Value=ExplorerRedaction.Safe(r.Value)}).ToList());
     public List<ScenarioCase> Scenarios()=>ReadNamed<ScenarioCase>("scenarios");
-    public Task SaveScenarios(List<ScenarioCase> cases)=>SaveNamed("scenarios",cases.Select(c=>c with{Title=ExplorerRedaction.Safe(c.Title),Question=ExplorerRedaction.Safe(c.Question),Expected=ExplorerRedaction.Safe(c.Expected),Observed=ExplorerRedaction.Safe(c.Observed)}).ToList());
+    public Task SaveScenarios(List<ScenarioCase> cases)=>SaveNamed("scenarios",cases.Select(c=>c with{Title=ExplorerRedaction.Safe(c.Title),Question=ExplorerRedaction.Safe(c.Question),Expected=ExplorerRedaction.Safe(c.Expected),Observed=ExplorerRedaction.Safe(c.Observed),MatchText=ExplorerRedaction.Safe(c.MatchText??""),Runs=c.Runs?.Select(r=>r with{Response=ExplorerRedaction.Safe(r.Response),Error=ExplorerRedaction.Safe(r.Error)}).ToList()}).ToList());
     public List<GovernanceRecord> Records()=>ReadNamed<GovernanceRecord>("records");
     public Task SaveRecords(List<GovernanceRecord> records)=>SaveNamed("records",records.Select(r=>r with{Owner=ExplorerRedaction.Safe(r.Owner),BusinessCriticality=ExplorerRedaction.Safe(r.BusinessCriticality),Comment=ExplorerRedaction.Safe(r.Comment)}).ToList());
 }

@@ -37,13 +37,13 @@ public sealed partial class MainWindow
 
     private void BuildTranscripts()
     {
+        transcriptFrom.Date=DateTimeOffset.Now.Date.AddDays(-appSettings.TranscriptDays);
         transcriptPanel.Children.Add(Label("Récupérez les transcriptions enregistrées dans Dataverse et explorez les échanges.", 14, "#687080"));
-        var filters = new Grid { ColumnSpacing = 12 };
-        filters.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        filters.ColumnDefinitions.Add(new() { Width = new GridLength(190) });
-        filters.ColumnDefinitions.Add(new() { Width = new GridLength(190) });
-        Place(filters, transcriptAgent, 0, 0); Place(filters, transcriptFrom, 0, 1); Place(filters, transcriptTo, 0, 2);
-        transcriptPanel.Children.Add(filters);
+        transcriptPanel.Children.Add(transcriptAgent);
+        var presets=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
+        foreach(var days in new[]{7,30,90}){var n=days;var button=new Button{Content=n+" jours"};button.Click+=(_,_)=>{transcriptTo.Date=DateTimeOffset.Now.Date;transcriptFrom.Date=DateTimeOffset.Now.Date.AddDays(-n);};presets.Children.Add(button);}transcriptPanel.Children.Add(presets);
+        var dates=new Grid{ColumnSpacing=12,RowSpacing=8};dates.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});dates.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});dates.RowDefinitions.Add(new(){Height=GridLength.Auto});dates.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        Place(dates,transcriptFrom,0,0);Place(dates,transcriptTo,0,1);dates.SizeChanged+=(_,_)=>{var narrow=dates.ActualWidth<650;Grid.SetRow(transcriptTo,narrow?1:0);Grid.SetColumn(transcriptTo,narrow?0:1);Grid.SetColumnSpan(transcriptFrom,narrow?2:1);Grid.SetColumnSpan(transcriptTo,narrow?2:1);};transcriptPanel.Children.Add(dates);
         RefreshTranscriptAgents();
         transcriptAgent.SelectionChanged += (_, _) => TranscriptFiltersChanged();
         transcriptFrom.DateChanged += (_, _) => TranscriptFiltersChanged();
@@ -66,7 +66,7 @@ public sealed partial class MainWindow
         workspace.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         transcriptList.ItemTemplate = (DataTemplate)XamlReader.Load("""
             <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
-              <StackPanel Spacing="6" Padding="8,12" MaxWidth="250"><TextBlock Text="{Binding StartLabel}" FontSize="14" FontWeight="SemiBold" Foreground="#303543"/><TextBlock Text="{Binding AgentName}" FontSize="12" Foreground="#6853B8" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Name}" FontSize="10" Foreground="#858895" TextTrimming="CharacterEllipsis"/></StackPanel>
+              <StackPanel Spacing="6" Padding="8,12" MaxWidth="250"><TextBlock Text="{Binding StartLabel}" FontSize="14" FontWeight="SemiBold" Foreground="#303543"/><TextBlock Text="{Binding AgentName}" FontSize="12" Foreground="#6853B8" TextTrimming="CharacterEllipsis"/><TextBlock Text="Ouvrir pour voir les tours et la durée" FontSize="10" Foreground="#858895"/></StackPanel>
             </DataTemplate>
             """);
         transcriptList.SelectionChanged += async (_, _) => await OpenTranscriptAsync(transcriptList.SelectedItem as TranscriptRecord);
@@ -152,7 +152,7 @@ public sealed partial class MainWindow
 
     private async Task LoadTranscriptsAsync(bool more)
     {
-        if (!authenticated) throw new InvalidOperationException("Connectez-vous avec le bouton en haut à gauche pour récupérer les transcriptions.");
+        if (!authenticated) throw new InvalidOperationException("Connectez-vous depuis le menu du compte en bas à gauche pour récupérer les transcriptions.");
         if (transcriptFrom.Date.Date > transcriptTo.Date.Date) throw new InvalidOperationException("La date de début doit précéder la date de fin.");
         if (more && transcriptNext == null) return;
         var path = more ? transcriptNext! : DataverseClient.TranscriptListPath((transcriptAgent.SelectedItem as ComboBoxItem)?.Tag as Guid?,
@@ -208,7 +208,7 @@ public sealed partial class MainWindow
         if (record == null) return;
         var generation = transcriptGeneration;
         conversationTitle.Text = record.AgentName;
-        conversationInfo.Text = record.StartLabel + "\n" + record.Id;
+        conversationInfo.Text = record.StartLabel;
         conversationMessages.Children.Add(Label("Chargement de la conversation…", 13, "#687080"));
         try
         {
@@ -227,9 +227,9 @@ public sealed partial class MainWindow
     {
         transcriptBatches = batches.OrderBy(TranscriptParser.BatchNumber).ToList();
         transcriptRaw.Text = JsonSerializer.Serialize(transcriptBatches, new JsonSerializerOptions { WriteIndented = true });
-        transcriptMetadata.Text = string.Join("\n\n", transcriptBatches.Select(x => x.Metadata));
+        transcriptMetadata.Text = "Identifiant : " + (transcriptList.SelectedItem as TranscriptRecord)?.Id + "\n\n" + string.Join("\n\n", transcriptBatches.Select(x => x.Metadata));
         foreach (var button in transcriptDetailActions) button.IsEnabled = true;
-        try { transcriptActivities = TranscriptParser.Parse(transcriptBatches); RenderTranscriptMessages(); }
+        try { transcriptActivities = TranscriptParser.Parse(transcriptBatches); var messages=transcriptActivities.Where(a=>a.Type.Equals("message",StringComparison.OrdinalIgnoreCase)).ToList();var times=messages.Where(a=>a.Timestamp.HasValue).Select(a=>a.Timestamp!.Value).OrderBy(x=>x).ToArray();var duration=times.Length>=2?" · "+(times[^1]-times[0]).ToString(@"hh\:mm\:ss"):" · durée non disponible";conversationInfo.Text=(transcriptList.SelectedItem as TranscriptRecord)?.StartLabel+" · "+messages.Count+" messages"+duration;RenderTranscriptMessages(); }
         catch (JsonException)
         {
             transcriptActivities = [];

@@ -1,0 +1,14 @@
+[
+  {
+    "Name": "Nom avec préfixe",
+    "Field": "Nom",
+    "Operation": "Commence par",
+    "Value": "Agent"
+  },
+  {
+    "Name": "Instructions de confidentialité",
+    "Field": "Instructions",
+    "Operation": "Contient",
+    "Value": "confidentialité"
+  }
+]

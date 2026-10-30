@@ -1,4 +1,4 @@
-﻿using Microsoft.UI;
+using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -12,7 +12,11 @@ namespace StudioDataverse;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly DataverseClient client = new();
+    private readonly AppSettings appSettings;
+    private readonly DataverseClient client;
+    private string settingsLoadError="";
+    internal bool WriteErrorLog=>appSettings.ErrorLogEnabled;
+    private LocalEngineOptions EngineOptions()=>new(appSettings.ModelContext,appSettings.ModelOutputTokens,appSettings.ModelTimeoutSeconds,appSettings.ModelThreads);
     private readonly StackPanel content = new() { Spacing = 24, Margin = new Thickness(32, 64, 32, 32), MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly StackPanel traces = new() { Spacing = 12, Margin = new Thickness(16) };
     private readonly InfoBar notice = new() { IsOpen = false, IsClosable = true, Severity = InfoBarSeverity.Informational };
@@ -46,19 +50,22 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        appSettings=AppSettings.Load(out settingsLoadError);client=new DataverseClient(appSettings.Organization,appSettings.TenantId,appSettings.ClientId,appSettings.RequestTimeoutSeconds);
+        if(!string.IsNullOrWhiteSpace(appSettings.DefaultModelPath)&&File.Exists(appSettings.DefaultModelPath)){questionModelPath=appSettings.DefaultModelPath;questionModelFormat=appSettings.DefaultModelFormat;}
+        conversationDays=appSettings.TranscriptDays.ToString();questionCount=appSettings.DefaultQuestionCount;scenarioRegion=appSettings.ScenarioRegion;
         Title = ProductIdentity.Name;
         AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "StudioDataverse.ico"));
         AppWindow.IsShownInSwitchers = true;
         var root = new Grid { Background = Brush("#FAFAFA"), RequestedTheme = ElementTheme.Light };
-        root.ColumnDefinitions.Add(new() { Width = new GridLength(238) });
+        var sidebarColumn = new ColumnDefinition { Width = new GridLength(appSettings.SidebarWidth) }; root.ColumnDefinitions.Add(sidebarColumn);
         root.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(apiColumn);
 
         var sidebar = new Grid { BorderBrush = Brush("#DEDEDE"), BorderThickness = new Thickness(0, 0, 1, 0) };
         sidebar.RowDefinitions.Add(new() { Height = new GridLength(1, GridUnitType.Star) });
         sidebar.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var nav = new StackPanel { Spacing = 4 };
-        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(4, 12, 12, 18) };
+        var nav = new StackPanel { Spacing = 4, Padding = new Thickness(6,0,0,0) };
+        var brand = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(4, 12, 4, 10) };
         brand.Children.Add(Artwork("brand", 26, 28));
         var brandText = Label(ProductIdentity.Name, 16, "#14263B");
         brandText.MaxWidth = 172;
@@ -78,14 +85,16 @@ public sealed partial class MainWindow : Window
         });
         brand.Children.Add(brandCopy);
         nav.Children.Add(brand);
+        var sidebarToggle=new Button { Content = "☰", Padding = new Thickness(10,5,10,5), HorizontalAlignment = HorizontalAlignment.Left };
+        ToolTipService.SetToolTip(sidebarToggle,"Replier ou déplier la navigation");nav.Children.Add(sidebarToggle);
         signIn.HorizontalAlignment = HorizontalAlignment.Stretch;
         signIn.Margin = new Thickness(12, 0, 12, 0);
         signIn.Background = Brush("#6357D5");
         signIn.Foreground = Brush("#FFFFFF");
         signIn.Padding = new Thickness(12, 10, 12, 10);
-        nav.Children.Add(signIn);
+        signIn.Visibility=Visibility.Collapsed;nav.Children.Add(signIn);
         connectionStatus.Margin = new Thickness(14, 0, 14, 4);
-        nav.Children.Add(connectionStatus);
+        connectionStatus.Visibility=Visibility.Collapsed;nav.Children.Add(connectionStatus);
         cancelSignIn.Margin = new Thickness(12, 0, 12, 8);
         cancelSignIn.Click += (_, _) => signInCancellation?.Cancel();
         nav.Children.Add(cancelSignIn);
@@ -112,13 +121,11 @@ public sealed partial class MainWindow : Window
         var flows = Nav("\uE8AB", "Flux liés");
         flows.Click += (_, _) => ShowOperations("Dépendances");
         nav.Children.Add(flows);
-        sidebar.Children.Add(new ScrollViewer { Content = nav, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        var footer = new StackPanel { Spacing = 8, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(4, 0, 12, 12) };
+        sidebar.Children.Add(new ScrollViewer { Content = nav, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Visible });
+        var footer = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(6, 0, 6, 8) };
         var apiToggle = Nav("\uE943", "Appels Dataverse");
         apiToggle.Click += (_, _) => ToggleApi();
         footer.Children.Add(apiToggle);
-        footer.Children.Add(Label(ProductIdentity.Name, 12, "#536277"));
-        footer.Children.Add(Label("Auteur : " + ProductIdentity.Author, 11, "#536277"));
         var about = Nav("\uE946", "À propos");
         about.Click += async (_, _) =>
         {
@@ -143,6 +150,11 @@ public sealed partial class MainWindow : Window
         accountCopy.Children.Add(accountName); accountCopy.Children.Add(accountState);
         Place(accountRow, accountCopy, 0, 1);
         var accountButton = new Button { Content = accountRow, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(8), CornerRadius = new CornerRadius(8) };
+        var sidebarCollapsed=false;
+        sidebarToggle.Click+=(_,_)=>{
+            sidebarCollapsed=!sidebarCollapsed;sidebarColumn.Width=new GridLength(sidebarCollapsed?64:appSettings.SidebarWidth);brandCopy.Visibility=sidebarCollapsed?Visibility.Collapsed:Visibility.Visible;accountCopy.Visibility=sidebarCollapsed?Visibility.Collapsed:Visibility.Visible;
+            foreach(var button in nav.Children.OfType<Button>().Concat(footer.Children.OfType<Button>()))if(button.Content is StackPanel row&&row.Children.Count>1){if(row.Children[1] is FrameworkElement label){ToolTipService.SetToolTip(button,(label as TextBlock)?.Text);label.Visibility=sidebarCollapsed?Visibility.Collapsed:Visibility.Visible;}}
+        };
         var accountMenu = new MenuFlyout();
         var switchAccount = new MenuFlyoutItem { Text = "Se connecter / Changer de compte" };
         switchAccount.Click += async (_, _) => await ConnectAsync();
@@ -223,40 +235,10 @@ public sealed partial class MainWindow : Window
         Content = root;
         InstallShortcuts(root);
         client.Traced += trace => DispatcherQueue.TryEnqueue(() => {if(trace.Session==client.SessionGeneration)AddTrace(trace);});
-        Closed += (_, _) => { operationsCancellation?.Cancel();targetEnvironmentClient?.Dispose();dependencyWeb.Close();reportWeb.Close();signInCancellation?.Cancel(); mapWeb.Close(); client.Dispose(); };
+        Closed += (_, _) => { operationsCancellation?.Cancel();chatCancellation?.Cancel();modelDownloadCancellation?.Cancel();targetEnvironmentClient?.Dispose();dependencyWeb.Close();reportWeb.Close();chatWeb.Close();signInCancellation?.Cancel(); mapWeb.Close(); client.Dispose(); };
     }
 
-    private void BuildHome()
-    {
-        homePanel.Spacing = 16;
-        var greeting = Label("", 30, "#202020");
-        greeting.Inlines.Add(new Run { Text = "Bonjour, prêt à " });
-        greeting.Inlines.Add(new Run { Text = "explorer ?", FontFamily = new FontFamily("Georgia"), FontStyle = Windows.UI.Text.FontStyle.Italic, Foreground = Brush("#6650FF") });
-        homePanel.Children.Add(greeting);
-        var subtitle = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        subtitle.Children.Add(Label("Comprenez et gouvernez vos agents", 18, "#6E6E6E"));
-        var credits = Badge("Exploration Dataverse");
-        credits.VerticalAlignment = VerticalAlignment.Center;
-        subtitle.Children.Add(credits);
-        homePanel.Children.Add(subtitle);
-        var cards = new Grid { ColumnSpacing = 16, Margin = new Thickness(0, 36, 0, 0) };
-        for (var i = 0; i < 3; i++) cards.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        Place(cards, HomeCard("assistant", "Agents", "Consultez les agents, leurs composants et leurs configurations.", () => ShowAgents()), 0, 0);
-        Place(cards, HomeCard("workflow", "Audit et dépendances", "Examinez les configurations et les liens entre agents, flux et connexions.", () => ShowOperations("Audit")), 0, 1);
-        Place(cards, HomeCard("application", "Incidents et rapports", "Explorez les erreurs observées et produisez vos rapports d’analyse.", () => ShowOperations("Incidents")), 0, 2);
-        homePanel.Children.Add(cards);
-        var otherContent = new Grid { ColumnSpacing = 16 };
-        otherContent.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        otherContent.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        var otherText = new StackPanel { Spacing = 4 };
-        otherText.Children.Add(Label("Parcourir le registre", 16, "#14263B"));
-        otherText.Children.Add(Label("Retrouvez les agents de votre environnement, filtrez leurs états et ouvrez leurs composants, conversations et analyses.", 12, "#536277"));
-        otherContent.Children.Add(otherText);
-        Place(otherContent, new FontIcon { Glyph = "\uE72A", FontSize = 16, Foreground = Brush("#666666") }, 0, 1);
-        var other = new Button { Content = otherContent, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(20, 16, 20, 16), CornerRadius = new CornerRadius(16), BorderBrush = Brush("#DCDCDC"), BorderThickness = new Thickness(1), Background = Brush("#FAFAFA") };
-        other.Click += (_, _) => ShowAgents();
-        homePanel.Children.Add(other);
-    }
+    private void BuildHome() => BuildHomeDashboard();
 
     private Button HomeCard(string asset, string title, string description, Action clicked)
     {
@@ -282,9 +264,9 @@ public sealed partial class MainWindow : Window
         HideAgentMap();
         viewingTranscripts = false; transcriptPanel.Visibility = Visibility.Collapsed;
         transcriptsNav.Background = new SolidColorBrush(Colors.Transparent);
-        content.MaxWidth = 720; content.HorizontalAlignment = HorizontalAlignment.Center;
+        content.MaxWidth = double.PositiveInfinity; content.HorizontalAlignment = HorizontalAlignment.Stretch;
         content.Margin = new Thickness(32, 64, 32, 32);
-        homePanel.Visibility = Visibility.Visible; agentPanel.Visibility = Visibility.Collapsed;
+        homePanel.Visibility = Visibility.Visible; agentPanel.Visibility = Visibility.Collapsed; RenderHomeDashboard();
         welcome.Visibility = Visibility.Collapsed; notice.IsOpen = false;
         homeNav.Background = Brush("#E7E7E7"); agentsNav.Background = new SolidColorBrush(Colors.Transparent);
     }
@@ -405,6 +387,7 @@ public sealed partial class MainWindow : Window
     private async Task ConnectAsync()
     {
         if (busy) return;
+        if(settingsLoadError.Length>0){ShowOperations("Paramètres");operationsStatus.Text=settingsLoadError;return;}
         var returnToTranscripts = viewingTranscripts;
         var returnToMap = viewingMap;
         var returnToDashboard = viewingDashboard;
@@ -412,6 +395,7 @@ public sealed partial class MainWindow : Window
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         signInCancellation = cancellation;
         cancelSignIn.Visibility = Visibility.Visible;
+        connectionStatus.Visibility = Visibility.Visible;
         connectionStatus.Text = "En attente dans le navigateur…";
         try
         {
@@ -429,7 +413,7 @@ public sealed partial class MainWindow : Window
                 identityLabel.Text = username;
                 accountName.Text = username;
                 ToolTipService.SetToolTip(accountName, username);
-                accountState.Text = "Connecté · Formation";
+                accountState.Text = "Connecté · "+appSettings.EnvironmentName;
                 avatarText.Text = string.IsNullOrWhiteSpace(username) ? "✓" : username[..1].ToUpperInvariant();
                 signIn.Content = "Changer de compte";
                 connectionStatus.Text = "Compte connecté";
@@ -450,6 +434,7 @@ public sealed partial class MainWindow : Window
         {
             signInCancellation = null;
             cancelSignIn.Visibility = Visibility.Collapsed;
+            connectionStatus.Visibility = Visibility.Collapsed;
             connectionStatus.Text = authenticated ? "Compte connecté" : "Non connecté · réessayez";
         }
     }
@@ -478,7 +463,7 @@ public sealed partial class MainWindow : Window
         if (ex is HttpRequestException httpError)
             return httpError.StatusCode switch
             {
-                System.Net.HttpStatusCode.Forbidden => "Microsoft vous a connecté, mais Dataverse refuse l’accès (403). Vérifiez les rôles de sécurité de ce compte dans l’environnement Formation. La réponse détaillée est dans Appels Dataverse.",
+                System.Net.HttpStatusCode.Forbidden => "Microsoft vous a connecté, mais Dataverse refuse l’accès (403). Vérifiez les rôles de sécurité de ce compte dans l’environnement configuré. La réponse détaillée est dans Appels Dataverse.",
                 System.Net.HttpStatusCode.Unauthorized => "Dataverse a refusé le jeton (401). Reconnectez-vous avec le compte du tenant de formation.",
                 _ => httpError.Message
             };

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -20,6 +20,23 @@ public sealed partial class MainWindow
     private Guid? targetEnvironmentAgentId;
     private void RenderAdvanced(string route)
     {
+        if(route=="Scénarios"){RenderScenarios();return;}
+        var info=route switch {
+            "Solutions"=>("Explorer les solutions","Parcourez les composants accessibles et examinez leurs liens avec les agents analysés.","DATAVERSE · LECTURE"),
+            "Recherche"=>("Rechercher dans les configurations","Retrouvez les noms et les références des agents déjà analysés.","AGENTS ANALYSÉS"),
+            "Règles"=>("Définir vos règles","Évaluez vos critères sur les données accessibles sans modifier les contrôles standard.","ENREGISTREMENT LOCAL"),
+            "Conversations avancées"=>("Explorer les conversations","Filtrez un échantillon de messages et exportez les résultats masqués.","ÉCHANTILLON · 50 MAXIMUM"),
+            "Évolution des risques"=>("Suivre les constats","Comparez les états relevés dans les instantanés locaux de cet agent.","INSTANTANÉS LOCAUX"),
+            "Dossiers"=>("Organiser la gouvernance","Documentez un responsable, une criticité et une prochaine revue.","DOSSIER LOCAL"),
+            "Diagnostic"=>("Vérifier la connexion","Contrôlez la session et l’accès courant à votre environnement.","SESSION DATAVERSE"),
+            "Santé"=>("Évaluer le périmètre","Visualisez les constats et incidents disponibles pour les agents analysés.","DONNÉES COLLECTÉES"),
+            "Scénarios"=>("Préparer vos scénarios","Enregistrez des questions et comparez les réponses obtenues ou saisies.","TEST À LA DEMANDE"),
+            "Environnements"=>("Comparer deux configurations","Examinez les différences avec un autre environnement du même tenant ou un instantané.","COMPARAISON PARTIELLE POSSIBLE"),
+            _=>("Explorer","Consultez les données disponibles.","PÉRIMÈTRE COURANT")};
+        var intro=new Grid{ColumnSpacing=20};intro.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});intro.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        var copy=new StackPanel{Spacing=6};var title=Label(info.Item1,20,"#24243A");title.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;copy.Children.Add(title);var description=Label(info.Item2,13,"#606879");description.TextWrapping=TextWrapping.Wrap;copy.Children.Add(description);intro.Children.Add(copy);
+        var badgeText=Label(info.Item3,11,"#5849B8");badgeText.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;var badge=new Border{Background=Brush("#EAE7FF"),CornerRadius=new CornerRadius(12),Padding=new Thickness(10,6,10,6),VerticalAlignment=VerticalAlignment.Top,Child=badgeText};Place(intro,badge,0,1);
+        operationsBody.Children.Add(new Border{Background=Brush("#F7F6FF"),BorderBrush=Brush("#E6E2FA"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(12),Padding=new Thickness(20),Child=intro});
         switch(route) {
             case "Solutions":RenderSolutions();break;
             case "Recherche":RenderGlobalSearch();break;
@@ -98,8 +115,8 @@ public sealed partial class MainWindow
     }
     private void RenderAdvancedConversations()
     {
-        var days=new TextBox{Header="Période en jours",Text="30"};var search=new TextBox{Header="Filtrer les messages chargés",Text=conversationQuery};
-        operationsBody.Children.Add(days);operationsBody.Children.Add(search);
+        var days=new TextBox{Header="Période en jours",Text=conversationDays};days.TextChanged+=(_,_)=>conversationDays=days.Text;var search=new TextBox{Header="Filtrer les messages chargés",Text=conversationQuery};
+        var filters=new Grid{ColumnSpacing=12};filters.ColumnDefinitions.Add(new(){Width=new GridLength(160)});filters.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});filters.Children.Add(days);Place(filters,search,0,1);operationsBody.Children.Add(Card(filters));
         operationsBody.Children.Add(OpButton("Charger les conversations",async token=>{
             var agent=OperationsAgent();if(!int.TryParse(days.Text,out var count)||count<1||count>365)throw new InvalidOperationException("Période : 1 à 365 jours.");
             var page=await client.ListTranscriptsAsync(DataverseClient.TranscriptListPath(agent.Id,DateTimeOffset.UtcNow.AddDays(-count),null));
@@ -126,6 +143,7 @@ public sealed partial class MainWindow
         operationsBody.Children.Add(Label("Le masquage des e-mails, téléphones et secrets est heuristique ; relisez l’export avant diffusion.",12,"#687080"));
     }
     private string conversationQuery="";
+    private string conversationDays="30";
     private string scenarioEndpoint="";
     private void RenderRiskHistory()
     {
@@ -186,29 +204,7 @@ public sealed partial class MainWindow
         foreach(var item in scope) {var risk=item.Findings.Count(x=>x.State==FindingState.Risque);var unknown=item.Findings.Count(x=>x.State==FindingState.NonVerifiable);var box=new StackPanel{Spacing=8};box.Children.Add(Label(item.Name+" · "+risk+" risque(s) · "+unknown+" non vérifiable(s)",14));box.Children.Add(new ProgressBar{Minimum=0,Maximum=item.Findings.Count,Value=risk,Foreground=Brush("#C4314B"),Height=6});operationsBody.Children.Add(Card(box));}
         operationsBody.Children.Add(Label("Résultats limités aux agents analysés et incidents chargés ; ils ne représentent pas une mesure exhaustive du tenant.",12));
     }
-    private void RenderScenarios()
-    {
-        if(operationsStore==null)return;var cases=operationsStore.Scenarios();
-        var title=new TextBox{Header="Nom du scénario"};var question=new TextBox{Header="Question",AcceptsReturn=true};var expected=new TextBox{Header="Texte attendu"};var observed=new TextBox{Header="Réponse observée",AcceptsReturn=true};
-        operationsBody.Children.Add(Label("La réponse peut être saisie ou obtenue par un test manuel via le canal de conversation. Un test réel peut déclencher les actions de l’agent : utilisez un environnement de test.",13));
-        var endpoint=new TextBox{Header="Point d’accès de conversation de l’agent sélectionné",PlaceholderText="URL du canal mobile depuis Copilot Studio",Text=scenarioEndpoint};
-        var region=Options("Région du canal","Europe","Global","Inde");operationsBody.Children.Add(endpoint);operationsBody.Children.Add(region);
-        operationsBody.Children.Add(title);operationsBody.Children.Add(question);operationsBody.Children.Add(expected);operationsBody.Children.Add(observed);
-        operationsBody.Children.Add(OpButton("Enregistrer le scénario",async _=>{if(string.IsNullOrWhiteSpace(title.Text)||string.IsNullOrWhiteSpace(question.Text))throw new InvalidOperationException("Nom et question requis.");cases.Add(new(Guid.NewGuid().ToString("N"),title.Text,question.Text,expected.Text,observed.Text,OperationsAgent().Id));await operationsStore.SaveScenarios(cases);}));
-        foreach(var item in cases.Where(c=>c.AgentId==Guid.Empty||c.AgentId==operationsAgentId)) {
-            var panel=new StackPanel{Spacing=8};panel.Children.Add(Label("Question : "+item.Question,13));panel.Children.Add(Label("Attendu : "+item.Expected,13));
-            var response=new TextBox{Header="Réponse observée",Text=item.Observed,AcceptsReturn=true};panel.Children.Add(response);
-            panel.Children.Add(OpButton("Lancer ce scénario réel",async token=>{
-                if(item.AgentId!=Guid.Empty&&item.AgentId!=OperationsAgent().Id)throw new InvalidOperationException("Ce scénario appartient à un autre agent.");
-                scenarioEndpoint=endpoint.Text.Trim();using var runner=new ScenarioRunner();operationsStatus.Text="Conversation en cours · attendez la première réponse textuelle…";
-                var answer=await runner.RunAsync(scenarioEndpoint,((ComboBoxItem)region.SelectedItem).Content.ToString()!,item.Question,token);
-                var updated=cases.Select(c=>c.Id==item.Id?c with{Observed=answer}:c).ToList();await operationsStore.SaveScenarios(updated);operationsStatus.Text="Première réponse textuelle reçue et enregistrée localement ; vérifiez son contexte.";
-            }));
-            panel.Children.Add(OpButton("Enregistrer la réponse",async _=>{var updated=cases.Select(c=>c.Id==item.Id?c with{Observed=response.Text}:c).ToList();await operationsStore.SaveScenarios(updated);}));
-            panel.Children.Add(OpButton("Supprimer le scénario local",async _=>await operationsStore.SaveScenarios(cases.Where(c=>c.Id!=item.Id).ToList())));
-            operationsBody.Children.Add(new Expander{Header=item.Title+" · "+AdvancedFunctions.ScenarioStatus(item),Content=panel,HorizontalAlignment=HorizontalAlignment.Stretch});
-        }
-    }
+    private void RenderScenarios() => RenderScenarioWorkspace();
     private void RenderEnvironments()
     {
         if(operationsStore==null||operationsAgentId==null)return;
@@ -216,7 +212,7 @@ public sealed partial class MainWindow
         operationsBody.Children.Add(Label("Comparez un instantané local avec un agent d’un autre environnement du même tenant, ou avec un instantané exporté. Les deux côtés sont lus séparément.",13));
         var url=new TextBox{Header="URL de l’environnement cible",PlaceholderText="https://organisation.crm17.dynamics.com",Text=targetEnvironmentUrl};operationsBody.Children.Add(url);
         operationsBody.Children.Add(OpButton("Connecter l’environnement cible",async token=> {
-            var address=url.Text.Trim();var next=new DataverseClient(address);
+            var address=url.Text.Trim();var next=new DataverseClient(address,appSettings.TenantId,appSettings.ClientId,appSettings.RequestTimeoutSeconds);
             try {
                 await next.SignInAsync(token);var agents=await next.ListAgentsAsync();
                 while(next.NextAgentsPath!=null){token.ThrowIfCancellationRequested();agents.AddRange(await next.MoreAgentsAsync());}

@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType><Version>3.0.0</Version><FileVersion>3.0.0.0</FileVersion>
+    <OutputType>WinExe</OutputType><Version>3.1.0</Version><FileVersion>3.1.0.0</FileVersion>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <RootNamespace>StudioDataverse</RootNamespace>
@@ -30,6 +30,8 @@
     <None Remove="release\**;version-*\**" />
     <Content Include="Assets\StudioDataverse.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\*.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Native\lamazero.dll" CopyToOutputDirectory="PreserveNewest" TargetPath="lamazero.dll" />
+    <Content Include="Native\LICENSE-lamazero.txt;Native\THIRD-PARTY-NOTICES.md;Native\README.md" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.66.2" />

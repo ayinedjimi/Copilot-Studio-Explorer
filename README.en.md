@@ -1,4 +1,4 @@
-# Copilot Studio Explorer 3.0
+# Copilot Studio Explorer 3.1
 
 [Français](README.md) | [English](README.en.md)
 
@@ -8,7 +8,7 @@ By [Ayi NEDJIMI Consultants](https://ayinedjimi-consultants.fr).
 
 ![Copilot Studio Explorer home screen](captures-github/accueil.png)
 
-Copilot Studio Explorer is a Windows desktop application for exploring agents, components, conversations, dependencies and configuration in a Dataverse environment.
+Copilot Studio Explorer is a Windows desktop application for exploring agents, components, conversations, dependencies and configuration in a Dataverse environment. Version 3.1 adds a grouped agent explorer, a local chat, question generation, local review screens, configurable settings and an enhanced scenario workspace.
 
 ## Features
 
@@ -43,7 +43,7 @@ Copilot Studio Explorer is a Windows desktop application for exploring agents, c
 3. Select **Se connecter** and complete Microsoft sign-in.
 4. Open the agent registry, choose an agent and inspect the information your account can access.
 
-The application currently uses the training environment and Microsoft Entra application identifiers configured in `DataverseClient.cs`. Deployments for another tenant or environment require appropriate configuration and permissions. The current interface is in French.
+The application initially uses the training environment. Change the Dataverse URL, tenant and application identifiers in **Paramètres** and restart to connect elsewhere; the chosen registration and user must have the necessary permissions. The application interface is currently in French. Setup screens are available in French and English.
 
 ## Security and data scope
 
@@ -84,7 +84,7 @@ captures-github/               Screenshot gallery
 
 ## Validation and limitations
 
-The release build and 123 local checks were previously reported successful: 113 .NET checks and 10 map checks. Network transports in the automated checks are simulated. Screenshots show the application connected to a training environment; they do not prove every feature has been tested end to end. The PDF export, second-environment connection and live scenario channel require validation in the intended environment.
+The automated checks use simulated network transports. Screenshots show the earlier 3.0 interface connected to a training environment; they do not prove every feature has been tested end to end. The installation and removal of 3.1, the PDF export, the second-environment connection, the model downloader and live scenario channels require validation in the intended environment.
 
 The DLP, Entra administration and external runtime log sources are not integrated. The first response collected by a scenario test may need contextual review. The selected environment and access rights determine the data available to each user.
 

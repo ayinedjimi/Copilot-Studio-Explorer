@@ -6,7 +6,7 @@
 #endif
 
 #define AppName "Copilot Studio Explorer"
-#define AppVersion "3.0.0"
+#define AppVersion "3.1.0"
 #define AppPublisher "Ayi NEDJIMI Consultants"
 #define AppWebsite "https://ayinedjimi-consultants.fr"
 
@@ -25,7 +25,7 @@ PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=Copilot-Studio-Explorer-Setup-3.0.0-x64
+OutputBaseFilename=Copilot-Studio-Explorer-Setup-3.1.0-x64
 SetupIconFile=..\outputs\StudioDataverse\Assets\StudioDataverse.ico
 UninstallDisplayIcon={app}\StudioDataverse.exe
 Compression=lzma2

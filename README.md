@@ -1,4 +1,4 @@
-# Copilot Studio Explorer 3.0
+# Copilot Studio Explorer 3.1
 
 [Français](README.md) | [English](README.en.md)
 
@@ -15,7 +15,17 @@ Télécharger l’installeur Windows x64 depuis les releases. Il propose un racc
 Les écrans de l’installeur sont disponibles en français et en anglais ; l’interface de l’application est actuellement en français. Les instructions de compilation de l’installeur se trouvent dans [installer/README.md](installer/README.md).
 Même organisation Dataverse et connexion Microsoft que la version précédente. Aucun secret requis ou enregistré par les modules.
 
-[Parcourir les captures d’écran](captures-github/README.md). Les captures proviennent de l’environnement de formation et doivent être relues avant publication.
+[Parcourir les captures d’écran](captures-github/README.md). Ces captures montrent la version 3.0 et proviennent de l’environnement de formation.
+
+## Nouveautés de la version 3.1
+
+- Explorateur d’agents avec groupes de publication, recherche, filtres et fiche à onglets ; navigation repliable et tableau de bord d’accueil.
+- Chat et génération de questions sur le poste avec choix du modèle, ainsi que synthèses locales de l’agent et de ses constats de sécurité. Les propositions sont à vérifier.
+- Téléchargement de fichiers GGUF publics depuis Hugging Face avec contrôle de taille et d’empreinte ; dépôt privé ou soumis à autorisation non pris en charge.
+- Page Paramètres pour la connexion Dataverse, les collectes, la navigation et le moteur local. Les paramètres de connexion sont appliqués au prochain démarrage.
+- Scénarios de test avec historique local et import de règles JSON dans l’audit.
+
+Le modèle léger est inclus dans les distributions Windows ; les autres modèles peuvent être ajoutés depuis le chat. [Guide des paramètres](PARAMETRES.md) · [Guide de génération locale](GENERATION-LOCALE.md) · [État des modules](ETAT-MODULES.md).
 
 ## Modules principaux
 
@@ -39,7 +49,7 @@ Les sources non accessibles dans l’une des versions sont exclues de la compara
 Les valeurs sensibles détectées sont masquées avant stockage. Leur valeur réelle ne peut donc pas être comparée ni restaurée. Aucune restauration dans Dataverse n’est proposée.
 
 ### Centre d’incidents
-Lecture explicite de 100 ou 500 enregistrements de transcription, sur les 30 derniers jours, et des 20 derniers runs accessibles de chaque flux lié.
+Lecture explicite de transcriptions, avec période et taille configurables dans Paramètres, et des 20 derniers runs accessibles de chaque flux lié.
 Les activités d’erreur explicites et les runs Failed sont regroupés, avec dates connues, résumé masqué, identifiants de corrélation et liens vers les transcriptions ou les dépendances.
 Les avertissements précisent la portée des échantillons et les sources inaccessibles. Une absence d’erreur dans l’échantillon n’atteste pas l’absence d’incident.
 Les listes volumineuses sont bornées à l’écran ; les rapports utilisent les occurrences collectées.
@@ -74,7 +84,7 @@ Le chargement global peut prendre du temps : progression et bouton Annuler sont 
 - Publication : dotnet publish outputs/StudioDataverse/StudioDataverse.csproj -c Release -p:Platform=x64 -o outputs/Application.
 
 ## Validation et limites
-113 vérifications .NET et 10 tests de cartes passent, soit 123 vérifications locales. Les transports réseau des tests sont simulés.
+129 vérifications .NET et 10 tests de cartes passent, soit 139 vérifications locales. Les transports réseau des tests sont simulés.
 La compilation ne valide pas tous les droits du tenant ni le rendu PDF. Les captures ne constituent pas un test exhaustif des fonctionnalités.
 Les intégrations aux consoles d’administration externes restent signalées Non vérifiables tant qu’elles ne sont pas connectées.
 

@@ -11,7 +11,7 @@ public sealed class AgentPreferences
     public void Visit(Guid id) { Recent.Remove(id); Recent.Insert(0, id); if (Recent.Count > 30) Recent.RemoveRange(30, Recent.Count - 30); }
     public bool Toggle(Guid id) { if (Favorites.Remove(id)) return false; Favorites.Add(id); return true; }
     public static string AccountKey(string username) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(username.Trim().ToLowerInvariant())));
-    public static string PathFor(string username) => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StudioDataverse", "preferences-" + AccountKey(username) + ".json");
+    public static string PathFor(string username,string? organization=null) => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StudioDataverse", "preferences-" + (organization==null||organization.TrimEnd('/').Equals(DataverseClient.Organization,StringComparison.OrdinalIgnoreCase)?"":AccountKey(organization.TrimEnd('/'))[..16]+"-") + AccountKey(username) + ".json");
     public static async Task<AgentPreferences> LoadAsync(string path)
     {
         if (!File.Exists(path)) return new();

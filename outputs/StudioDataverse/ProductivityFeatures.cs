@@ -23,8 +23,8 @@ public sealed partial class MainWindow
         panel.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         personalView.SelectionChanged += (_, _) => FilterAgents();
         panel.Children.Add(personalView);
-        var help = Label("Ctrl+F  Rechercher   ·   Ctrl+R  Actualiser   ·   Ctrl+D  Favori", 11, "#858895");
-        help.VerticalAlignment = VerticalAlignment.Bottom; help.Margin = new Thickness(0, 0, 0, 10);
+        var help = new Button { Content = "?", HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
+        ToolTipService.SetToolTip(help,"Raccourcis : Ctrl+F rechercher · Ctrl+R actualiser · Ctrl+D favori");
         Place(panel, help, 0, 1);
         return panel;
     }
@@ -39,7 +39,7 @@ public sealed partial class MainWindow
         summary.Click += (_, _) =>
         {
             if (SelectedAgentOrNull() is not Agent agent) return;
-            CopyText($"{agent.Name}\nSchéma : {agent.Schema}\nID : {agent.Id}\nÉtat : {agent.StatusLabel}\nLangue : {LanguageName(agent.Language)}\nModifié : {agent.ModifiedLabel}\nEnvironnement : {DataverseClient.Organization}");
+            CopyText($"{agent.Name}\nSchéma : {agent.Schema}\nID : {agent.Id}\nÉtat : {agent.StatusLabel}\nLangue : {LanguageName(agent.Language)}\nModifié : {agent.ModifiedLabel}\nEnvironnement : {client.OrganizationUrl}");
             detailStatus.Text = "Fiche copiée dans le presse-papiers";
         };
         row.Children.Add(summary); panel.Children.Add(row);
@@ -59,7 +59,7 @@ public sealed partial class MainWindow
         comparisonAnchor = null; comparisonLabel.Text = "Aucune référence choisie";
         personalView.SelectedIndex = 0;
         preferences = new();
-        preferencesPath = AgentPreferences.PathFor(username);
+        preferencesPath = AgentPreferences.PathFor(username,client.OrganizationUrl);
         try { preferences = await AgentPreferences.LoadAsync(preferencesPath); }
         catch (IOException) { connectionStatus.Text = "Préférences locales indisponibles"; }
         catch (UnauthorizedAccessException) { connectionStatus.Text = "Préférences locales indisponibles"; }

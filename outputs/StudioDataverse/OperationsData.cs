@@ -61,10 +61,10 @@ public sealed partial class DataverseClient
         var safeAgent=ExplorerRedaction.Json(detail);
         return ExplorerInspection.Create(agent.Id,ExplorerInspection.Text(detail,"name") is {Length:>0} currentName?currentName:agent.Name,safeAgent,components.Select(ExplorerRedaction.Json).ToList(),flows.Select(ExplorerRedaction.Json).ToList(),connections.Select(ExplorerRedaction.Json).ToList(),missing.Distinct().ToList(),secret,ownerState) with {LastConversation=lastConversation,ActivityState=activityState};
     }
-    public async Task<(List<ExplorerIncident> Items,List<string> Warnings)> ExplorerIncidentsAsync(AgentInspection inspection,int sample,CancellationToken token)
+    public async Task<(List<ExplorerIncident> Items,List<string> Warnings)> ExplorerIncidentsAsync(AgentInspection inspection,int sample,CancellationToken token,int days=30)
     {
         var items=new List<ExplorerIncident>();var warnings=new List<string>();sample=Math.Clamp(sample,1,500);
-        var since=DateTimeOffset.UtcNow.AddDays(-30).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        days=Math.Clamp(days,1,365);var since=DateTimeOffset.UtcNow.AddDays(-days).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ");
         try {
             var path="conversationtranscripts?$select=conversationtranscriptid,name,conversationstarttime,content,metadata&$filter="+Uri.EscapeDataString($"_bot_conversationtranscriptid_value eq {inspection.AgentId:D} and conversationstarttime ge {since}")+"&$orderby=conversationstarttime desc&$top="+sample;
             var rows=await ExplorerRows(path,token,sample);
@@ -80,7 +80,7 @@ public sealed partial class DataverseClient
                     }
                 }catch(JsonException) {warnings.Add("Une transcription n’a pas pu être interprétée : "+id);}
             }
-            warnings.Add($"Conversations : {rows.Count} enregistrement(s) lu(s), sur 30 jours, limite {sample} ; absence d’erreur dans l’échantillon ≠ absence d’incident.");
+            warnings.Add($"Conversations : {rows.Count} enregistrement(s) lu(s), sur {days} jours, limite {sample} ; absence d’erreur dans l’échantillon ≠ absence d’incident.");
         }catch(OperationCanceledException) when(token.IsCancellationRequested){throw;}catch {warnings.Add("Transcriptions non accessibles : résultats partiels.");}
         foreach(var flow in inspection.Flows) {
             var id=ExplorerInspection.Text(flow,"workflowid");if(!Guid.TryParse(id,out var guid))continue;

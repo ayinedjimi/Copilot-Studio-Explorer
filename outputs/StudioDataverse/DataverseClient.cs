@@ -20,11 +20,8 @@ public sealed partial class DataverseClient : IDisposable
 {
     public const string Organization = "https://org86c36b58.crm17.dynamics.com";
     public const string EnvironmentId = "96e7335b-3367-efa8-a70f-ea65680c1a5c";
-    private readonly IPublicClientApplication identity = PublicClientApplicationBuilder
-        .Create("ff6816da-a957-4e33-ba4a-23b15d60b774")
-        .WithAuthority("https://login.microsoftonline.com/8ebfeed3-cf5d-4d41-b2ed-35f5369dda1c")
-        .WithRedirectUri("http://localhost")
-        .Build();
+    private readonly IPublicClientApplication identity;
+    private static IPublicClientApplication CreateIdentity(string tenantId,string clientId)=>PublicClientApplicationBuilder.Create(clientId).WithAuthority("https://login.microsoftonline.com/"+tenantId).WithRedirectUri("http://localhost").Build();
     private readonly HttpClient http;
     // Public desktop clients request the delegated Dataverse scope explicitly.
     // This also permits dynamic consent instead of relying on static /.default permissions.
@@ -33,17 +30,21 @@ public sealed partial class DataverseClient : IDisposable
     private int sessionGeneration;
     public int SessionGeneration=>Volatile.Read(ref sessionGeneration);
     private readonly Func<Task<string>>? testTokenProvider;
+    public string OrganizationUrl { get; }
+    public static bool IsValidOrganization(string? organization)=>Uri.TryCreate(organization?.Trim(),UriKind.Absolute,out var uri)&&uri.Scheme=="https"&&uri.IsDefaultPort&&uri.UserInfo.Length==0&&uri.Query.Length==0&&uri.Fragment.Length==0&&uri.AbsolutePath=="/"&&System.Text.RegularExpressions.Regex.IsMatch(uri.Host,@"^[a-z0-9-]+\.crm\d*\.dynamics\.com$",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     public DataverseClient():this(Organization) { }
-    public DataverseClient(string organization)
+    public DataverseClient(string organization,string tenantId="8ebfeed3-cf5d-4d41-b2ed-35f5369dda1c",string clientId="ff6816da-a957-4e33-ba4a-23b15d60b774",int timeoutSeconds=45)
     {
-        if(!Uri.TryCreate(organization.Trim(),UriKind.Absolute,out var uri)||uri.Scheme!="https"||!uri.IsDefaultPort||uri.UserInfo.Length>0||uri.Query.Length>0||uri.Fragment.Length>0||uri.AbsolutePath!="/"||!System.Text.RegularExpressions.Regex.IsMatch(uri.Host,@"^[a-z0-9-]+\.crm\d*\.dynamics\.com$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        if(!IsValidOrganization(organization))
             throw new InvalidOperationException("URL Dataverse invalide. Utilisez l’URL HTTPS racine de l’organisation.");
-        var origin=uri.GetLeftPart(UriPartial.Authority);
-        http=new HttpClient{BaseAddress=new Uri(origin+"/api/data/v9.2/"),Timeout=TimeSpan.FromSeconds(45)};
+        if(!Guid.TryParse(tenantId,out _)||!Guid.TryParse(clientId,out _)||timeoutSeconds is <10 or >300)throw new InvalidOperationException("Configuration de connexion invalide.");
+        var origin=new Uri(organization.Trim()).GetLeftPart(UriPartial.Authority);OrganizationUrl=origin;identity=CreateIdentity(tenantId,clientId);
+        http=new HttpClient{BaseAddress=new Uri(origin+"/api/data/v9.2/"),Timeout=TimeSpan.FromSeconds(timeoutSeconds)};
         scopes=[origin+"/user_impersonation"];
     }
     internal DataverseClient(HttpClient transport, Func<Task<string>> tokenProvider)
     {
+        identity=CreateIdentity("8ebfeed3-cf5d-4d41-b2ed-35f5369dda1c","ff6816da-a957-4e33-ba4a-23b15d60b774");OrganizationUrl=Organization;
         http = transport;
         scopes=[Organization+"/user_impersonation"];
         http.BaseAddress = new Uri(Organization + "/api/data/v9.2/");
@@ -85,7 +86,7 @@ public sealed partial class DataverseClient : IDisposable
         if (testTokenProvider != null) token = await testTokenProvider();
         else
         {
-            if (currentAccount == null) throw new InvalidOperationException("Connectez-vous à Microsoft avec le bouton en haut à gauche.");
+            if (currentAccount == null) throw new InvalidOperationException("Connectez-vous à Microsoft depuis le menu du compte en bas à gauche.");
             var auth = await identity.AcquireTokenSilent(scopes, currentAccount).ExecuteAsync(cancellationToken);
             token = auth.AccessToken;
         }

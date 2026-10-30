@@ -1,6 +1,6 @@
 # Captures de Copilot Studio Explorer
 
-Ces captures présentent les écrans de l’application avec les données de l’environnement de formation. Le compte connecté, les noms de créateurs dans le graphique et les identifiants visibles de conversations ont été masqués.
+Ces captures présentent les écrans de la version 3.0 avec les données de l’environnement de formation. La version 3.1 comporte une interface différente. Le compte connecté, les noms de créateurs dans le graphique et les identifiants visibles de conversations ont été masqués.
 
 Avant une publication publique, relire chaque image : des noms d’agents et de solutions, des statistiques et des dates de l’environnement restent visibles. Les pages sans données historiques ou sans scénario reflètent l’état réel au moment de la capture.
 

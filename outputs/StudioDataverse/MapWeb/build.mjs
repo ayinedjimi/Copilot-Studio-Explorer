@@ -16,3 +16,5 @@ await writeFile('../Assets/AgentMap/THIRD-PARTY-NOTICES.txt', notices.join('\n\n
 
 await build({ absWorkingDir: fileURLToPath(new URL('.', import.meta.url)), entryPoints: [fileURLToPath(new URL('src/dependencies.jsx', import.meta.url))], tsconfigRaw: {}, bundle: true, minify: true, format: 'esm', target: 'chrome110', outfile: '../Assets/AgentMap/dependency.js', loader: { '.css': 'css' }, legalComments: 'linked' });
 await copyFile('dependencies.html', '../Assets/AgentMap/dependencies.html');
+await build({ absWorkingDir: fileURLToPath(new URL('.', import.meta.url)), entryPoints: [fileURLToPath(new URL('src/chat.jsx', import.meta.url))], tsconfigRaw: {}, bundle: true, minify: true, format: 'esm', target: 'chrome110', outfile: '../Assets/AgentMap/chat.js', loader: { '.css': 'css' }, legalComments: 'linked' });
+await copyFile('chat.html', '../Assets/AgentMap/chat.html');

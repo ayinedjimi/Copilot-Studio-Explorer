@@ -8,11 +8,16 @@ namespace StudioDataverse;
 public sealed partial class MainWindow
 {
     private readonly WebView2 dependencyWeb=new(){Height=700,HorizontalAlignment=HorizontalAlignment.Stretch};
+    private readonly Border dependencyHost=new(){CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1)};
     private readonly TextBlock dependencyStatus=Label("Carte locale React Flow.",12,"#687080");
     private readonly StackPanel dependencyDetail=new(){Spacing=8};
+    private readonly TextBlock dependencyObjects=Label("0",28,"#6357D5"),dependencyLinks=Label("0",28,"#0078D4"),dependencyMissing=Label("0",28,"#85838B");
     private bool dependencyReady,dependencyLoading;
     private readonly WebView2 reportWeb=new(){Height=700,HorizontalAlignment=HorizontalAlignment.Stretch};
-    private string loadedReport="";
+    private readonly Border reportHost=new(){CornerRadius=new CornerRadius(8),BorderThickness=new Thickness(1)};
+    private readonly TextBlock reportScopeText=Label("",14),reportEmpty=Label("Lancez une analyse avant de produire un rapport.",16);
+    private StackPanel? reportToolbar;
+    private string loadedReport="",reportCsv="";
     private TaskCompletionSource<bool>? reportNavigation;
     private bool reportLoading;
     private TaskCompletionSource<bool>? reportSetup;
@@ -20,14 +25,22 @@ public sealed partial class MainWindow
     private async Task<CoreWebView2Environment> OperationsWebEnvironment()=>await CoreWebView2Environment.CreateWithOptionsAsync(null,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CopilotStudioExplorer","WebView2"),new CoreWebView2EnvironmentOptions());
     private void RenderDependencies()
     {
-        var scope=OperationsScope();var nodes=scope.SelectMany(x=>x.Nodes).DistinctBy(x=>x.Id).ToList();var edges=scope.SelectMany(x=>x.Edges).DistinctBy(x=>x.Id).ToList();
-        Metrics(("Objets",nodes.Count.ToString(),"#6357D5"),("Liens observés",edges.Count.ToString(),"#0078D4"),("Sources inaccessibles",scope.Sum(x=>x.Missing.Count).ToString(),"#85838B"));
+        var grid=new Grid{ColumnSpacing=12};
+        var values=new[]{("Objets",dependencyObjects),("Liens observés",dependencyLinks),("Sources inaccessibles",dependencyMissing)};
+        for(int i=0;i<values.Length;i++){grid.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});var column=new StackPanel{Spacing=8};column.Children.Add(Label(values[i].Item1,12,"#536277"));values[i].Item2.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;if(values[i].Item2.Parent is Panel previous)previous.Children.Remove(values[i].Item2);column.Children.Add(values[i].Item2);Place(grid,Card(column),0,i);}
+        operationsBody.Children.Add(grid);
         operationsBody.Children.Add(Label("Liens extraits des références effectivement déclarées. Une connexion ou un flux non accessible reste visible comme référence non vérifiable. Sélectionnez un objet pour retrouver les agents susceptibles d’être impactés.",13,"#536277"));
-        dependencyDetail.Children.Clear();if(dependencyWeb.Parent is Border oldDependencyHost)oldDependencyHost.Child=null;
-        operationsBody.Children.Add(dependencyStatus);operationsBody.Children.Add(new Border{Child=dependencyWeb,CornerRadius=new CornerRadius(8),BorderBrush=Brush("#DFE2EA"),BorderThickness=new Thickness(1)});
+        dependencyDetail.Children.Clear();dependencyHost.BorderBrush=Brush("#DFE2EA");if(dependencyHost.Child==null)dependencyHost.Child=dependencyWeb;
+        operationsBody.Children.Add(dependencyStatus);operationsBody.Children.Add(dependencyHost);
         operationsBody.Children.Add(dependencyDetail);
         operationsBody.Children.Add(OpButton("Recharger la carte",async _=>{if(dependencyWeb.CoreWebView2!=null)dependencyWeb.CoreWebView2.Reload();else await EnsureDependencyWeb();}));
-        _=EnsureDependencyWeb();SendDependencies();
+        _=EnsureDependencyWeb();RefreshDependencies();
+    }
+    private void RefreshDependencies()
+    {
+        var scope=OperationsScope();dependencyObjects.Text=scope.SelectMany(x=>x.Nodes).Select(x=>x.Id).Distinct().Count().ToString();
+        dependencyLinks.Text=scope.SelectMany(x=>x.Edges).Select(x=>x.Id).Distinct().Count().ToString();
+        dependencyMissing.Text=scope.Sum(x=>x.Missing.Count).ToString();SendDependencies();
     }
     private async Task EnsureDependencyWeb()
     {
@@ -59,28 +72,39 @@ public sealed partial class MainWindow
     private void SendDependencies()
     {
         if(!dependencyReady||dependencyWeb.CoreWebView2==null)return;
-        var scope=OperationsScope();
-        dependencyWeb.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type="dependencies",nodes=scope.SelectMany(x=>x.Nodes).DistinctBy(x=>x.Id).Select(x=>new{id=x.Id,label=x.Label,kind=x.Kind,state=x.State}),edges=scope.SelectMany(x=>x.Edges).DistinctBy(x=>x.Id).Select(x=>new{id=x.Id,source=x.Source,target=x.Target,label=x.Label})}));
-        dependencyStatus.Text="React Flow · zoom et déplacement · liens déclarés · aucun secret ni jeton transmis à la carte locale.";
+        try {
+            var scope=OperationsScope();
+            dependencyWeb.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new{type="dependencies",nodes=scope.SelectMany(x=>x.Nodes).DistinctBy(x=>x.Id).Select(x=>new{id=x.Id,label=x.Label,kind=x.Kind,state=x.State}),edges=scope.SelectMany(x=>x.Edges).DistinctBy(x=>x.Id).Select(x=>new{id=x.Id,source=x.Source,target=x.Target,label=x.Label})}));
+            dependencyStatus.Text="React Flow · zoom et déplacement · liens déclarés · aucun secret ni jeton transmis à la carte locale.";
+        }catch(Exception ex){dependencyReady=false;dependencyStatus.Text="Impossible de mettre à jour la carte. Utilisez « Recharger la carte » ou consultez les rapports.";_ = App.ShowErrorAsync(this,App.RecordError(ex));}
     }
     private void RenderReports()
     {
-        var scope=OperationsScope();var ids=scope.Select(x=>x.AgentId).ToHashSet();
-        var incidents=incidentsByAgent.Where(x=>ids.Contains(x.Key)).SelectMany(x=>x.Value).ToList();var notes=(operationsStore?.Notes()??[]).Where(x=>ids.Contains(x.AgentId)).ToList();
-        operationsBody.Children.Add(Label("Rapport du périmètre sélectionné : "+scope.Count+" agent(s) analysé(s), "+incidents.Count+" incident(s) observé(s). Les agents non analysés ne sont pas inclus.",14));
-        if(scope.Count==0){operationsBody.Children.Add(Label("Lancez une analyse avant de produire un rapport.",16));return;}
-        reportHtml=ExplorerReports.Html(scope,incidents,notes,currentDifferences);var csv=ExplorerReports.Csv(scope,incidents,notes,currentDifferences);
-        var toolbar=new StackPanel{Orientation=Orientation.Horizontal,Spacing=10};
+        operationsBody.Children.Add(reportScopeText);operationsBody.Children.Add(reportEmpty);
+        var toolbar=reportToolbar=new StackPanel{Orientation=Orientation.Horizontal,Spacing=10};
         toolbar.Children.Add(OpButton("Exporter HTML",async _=>{var file=await OperationsSavePicker(".html","Rapport HTML");if(file!=null)await File.WriteAllTextAsync(file.Path,reportHtml,new UTF8Encoding(true));}));
-        toolbar.Children.Add(OpButton("Exporter CSV",async _=>{var file=await OperationsSavePicker(".csv","CSV");if(file!=null)await File.WriteAllTextAsync(file.Path,csv,new UTF8Encoding(true));}));
+        toolbar.Children.Add(OpButton("Exporter CSV",async _=>{var file=await OperationsSavePicker(".csv","CSV");if(file!=null)await File.WriteAllTextAsync(file.Path,reportCsv,new UTF8Encoding(true));}));
         toolbar.Children.Add(OpButton("Exporter PDF",async token=>{
             await EnsureReportPreview();if(reportNavigation==null||!await reportNavigation.Task.WaitAsync(TimeSpan.FromSeconds(30),token))throw new InvalidOperationException("L’aperçu PDF n’est pas prêt ; vérifiez WebView2 Runtime.");
             var file=await OperationsSavePicker(".pdf","Rapport PDF");if(file==null)return;token.ThrowIfCancellationRequested();
             if(reportWeb.CoreWebView2==null||!await reportWeb.CoreWebView2.PrintToPdfAsync(file.Path,null))throw new InvalidOperationException("Le PDF n’a pas pu être enregistré.");
             operationsStatus.Text="Rapport PDF enregistré.";
         }));
-        if(reportWeb.Parent is Border oldReportHost)oldReportHost.Child=null;
-        operationsBody.Children.Add(toolbar);operationsBody.Children.Add(new Border{Child=reportWeb,BorderBrush=Brush("#DFE2EA"),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)});
+        reportHost.BorderBrush=Brush("#DFE2EA");if(reportHost.Child==null)reportHost.Child=reportWeb;
+        operationsBody.Children.Add(toolbar);operationsBody.Children.Add(reportHost);
+        RefreshReports();
+    }
+    private void RefreshReports()
+    {
+        var scope=OperationsScope();var ids=scope.Select(x=>x.AgentId).ToHashSet();
+        var incidents=incidentsByAgent.Where(x=>ids.Contains(x.Key)).SelectMany(x=>x.Value).ToList();
+        var notes=(operationsStore?.Notes()??[]).Where(x=>ids.Contains(x.AgentId)).ToList();
+        reportScopeText.Text="Rapport du périmètre sélectionné : "+scope.Count+" agent(s) analysé(s), "+incidents.Count+" incident(s) observé(s). Les agents non analysés ne sont pas inclus.";
+        reportEmpty.Visibility=scope.Count==0?Visibility.Visible:Visibility.Collapsed;
+        reportHost.Visibility=scope.Count==0?Visibility.Collapsed:Visibility.Visible;
+        if(reportToolbar!=null){reportToolbar.Visibility=scope.Count==0?Visibility.Collapsed:Visibility.Visible;foreach(var button in reportToolbar.Children.OfType<Button>())button.IsEnabled=!operationsBusy;}
+        if(scope.Count==0){reportHtml="";reportCsv="";return;}
+        reportHtml=ExplorerReports.Html(scope,incidents,notes,currentDifferences);reportCsv=ExplorerReports.Csv(scope,incidents,notes,currentDifferences);
         _=EnsureReportPreview();
     }
     private async Task<Windows.Storage.StorageFile?> OperationsSavePicker(string extension,string label)
@@ -91,7 +115,7 @@ public sealed partial class MainWindow
     private async Task EnsureReportPreview()
     {
         if(!reportWeb.IsLoaded)return;
-        if(reportLoading){if(reportSetup!=null)try{await reportSetup.Task.WaitAsync(TimeSpan.FromSeconds(30));}catch{}return;}reportLoading=true;reportSetup=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if(reportLoading){if(reportSetup!=null)try{await reportSetup.Task.WaitAsync(TimeSpan.FromSeconds(30));}catch{return;}if(!reportLoading)await EnsureReportPreview();return;}reportLoading=true;reportSetup=new(TaskCreationOptions.RunContinuationsAsynchronously);
         var session=client.SessionGeneration;
         try {
             if(reportWeb.CoreWebView2==null) {
@@ -109,15 +133,15 @@ public sealed partial class MainWindow
             if(session!=client.SessionGeneration||operationsStore==null)return;
             var core=reportWeb.CoreWebView2??throw new InvalidOperationException("WebView2 indisponible.");
             if(loadedReport!=reportHtml&&reportHtml.Length>0) {
-                var folder=operationsStore.PreviewFolder;
-                await File.WriteAllTextAsync(Path.Combine(folder,"report.html"),reportHtml,new UTF8Encoding(false));
+                var folder=operationsStore.PreviewFolder;var html=reportHtml;
+                await File.WriteAllTextAsync(Path.Combine(folder,"report.html"),html,new UTF8Encoding(false));
                 if(session!=client.SessionGeneration)return;
                 core.ClearVirtualHostNameToFolderMapping("explorer-report.local");
                 core.SetVirtualHostNameToFolderMapping("explorer-report.local",folder,CoreWebView2HostResourceAccessKind.DenyCors);
-                loadedReport=reportHtml;reportNavigation=new(TaskCreationOptions.RunContinuationsAsynchronously);
+                loadedReport=html;reportNavigation=new(TaskCreationOptions.RunContinuationsAsynchronously);
                 core.Navigate("https://explorer-report.local/report.html?v="+Guid.NewGuid().ToString("N"));
             }
-        }catch {operationsStatus.Text="Aperçu indisponible ; vérifiez le stockage local et WebView2 Runtime. Les exports HTML et CSV restent disponibles.";}
+        }catch(Exception ex) {loadedReport="";reportNavigation?.TrySetResult(false);operationsStatus.Text="Aperçu indisponible ; vérifiez le stockage local et WebView2 Runtime. Les exports HTML et CSV restent disponibles.";await App.ShowErrorAsync(this,App.RecordError(ex));}
         finally{reportLoading=false;reportSetup?.TrySetResult(true);}
     }
 }

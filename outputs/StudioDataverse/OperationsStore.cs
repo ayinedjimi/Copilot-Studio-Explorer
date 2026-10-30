@@ -3,9 +3,9 @@ namespace StudioDataverse;
 public sealed partial class ExplorerLocalStore
 {
     private readonly string root;
-    public ExplorerLocalStore(string username,string? basePath=null)
+    public ExplorerLocalStore(string username,string? basePath=null,string? organization=null)
     {
-        root=Path.Combine(basePath??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CopilotStudioExplorer"),ExplorerRedaction.Hash(DataverseClient.Organization)[..16],ExplorerRedaction.Hash(username.Trim().ToLowerInvariant())[..24]);
+        root=Path.Combine(basePath??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CopilotStudioExplorer"),ExplorerRedaction.Hash((organization??DataverseClient.Organization).TrimEnd('/').ToLowerInvariant())[..16],ExplorerRedaction.Hash(username.Trim().ToLowerInvariant())[..24]);
     }
     private static async Task Write(string path,object value)
     {

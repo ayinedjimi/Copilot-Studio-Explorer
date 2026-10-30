@@ -31,6 +31,11 @@ public sealed partial class MainWindow
     private void InstallOperationsNavigation(StackPanel nav)
     {
         nav.Children.Add(new Border{Height=1,Background=Brush("#DEDEDE"),Margin=new Thickness(8,10,16,6)});
+        var explorerButton=Nav("\uE8B7","Explorateur d’agents");explorerButton.Click+=(_,_)=>ShowOperations("Explorateur");operationsNavigation["Explorateur"]=explorerButton;nav.Children.Add(explorerButton);
+        var questionsButton=Nav("\uE8F2","Jeux de questions");questionsButton.Click+=(_,_)=>ShowOperations("Questions");operationsNavigation["Questions"]=questionsButton;nav.Children.Add(questionsButton);
+        var chatButton=Nav("\uE8BD","Chat local");chatButton.Click+=(_,_)=>ShowOperations("Chat local");operationsNavigation["Chat local"]=chatButton;nav.Children.Add(chatButton);
+        var settingsButton=Nav("\uE713","Paramètres");settingsButton.Click+=(_,_)=>ShowOperations("Paramètres");operationsNavigation["Paramètres"]=settingsButton;nav.Children.Add(settingsButton);
+        foreach(var module in new[]{("Analyse IA","#7855D5"),("Sécurité IA","#008C99")}){var item=Nav("\uE734",module.Item1);if(item.Content is StackPanel row&&row.Children[0] is FontIcon icon)icon.Foreground=Brush(module.Item2);var route=module.Item1;item.Click+=(_,_)=>ShowOperations(route);operationsNavigation[route]=item;nav.Children.Add(item);}
         foreach(var item in new[]{("Audit","\uE72E","Audit de sécurité"),("Dépendances","\uE8F1","Dépendances"),("Historique","\uE81C","Historique et versions"),("Incidents","\uE7BA","Centre d’incidents"),("Gouvernance","\uE716","Gouvernance"),("Rapports","\uE9D5","Rapports"),("Solutions","\uE8B7","Solutions"),("Environnements","\uE774","Environnements"),("Recherche","\uE721","Recherche globale"),("Conversations avancées","\uE8F2","Conversations avancées"),("Règles","\uE8D0","Règles personnalisées"),("Évolution des risques","\uE9D2","Évolution des risques"),("Dossiers","\uE716","Dossiers de gouvernance"),("Diagnostic","\uE9CE","Diagnostic connexion"),("Santé","\uE9D9","Santé des agents"),("Scénarios","\uE768","Scénarios de test")})
         {
             var key=item.Item1;var button=Nav(item.Item2,item.Item3);
@@ -39,11 +44,8 @@ public sealed partial class MainWindow
     }
     private void BuildOperations()
     {
-        var shortcuts=new Grid{ColumnSpacing=12,RowSpacing=12};for(int i=0;i<3;i++)shortcuts.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});for(int i=0;i<2;i++)shortcuts.RowDefinitions.Add(new(){Height=GridLength.Auto});
-        var moduleNames=new[]{("Audit","Audit de sécurité","Identités, accès et configurations"),("Dépendances","Dépendances","Agents, outils, flux et connexions"),("Historique","Versions","Captures et différences"),("Incidents","Incidents","Erreurs et corrélations"),("Gouvernance","Gouvernance","Responsables et suivi local"),("Rapports","Rapports","HTML, CSV et PDF")};
-        for(int i=0;i<moduleNames.Length;i++){var m=moduleNames[i];var box=new StackPanel{Spacing=10};box.Children.Add(Label(m.Item2,18));box.Children.Add(Label(m.Item3,12,"#687080"));var open=new Button{Content="Explorer →"};var route=m.Item1;open.Click+=(_,_)=>ShowOperations(route);box.Children.Add(open);Place(shortcuts,Card(box),i/3,i%3);}
-        homePanel.Children.Add(Label("Explorer et gouverner vos agents",22));homePanel.Children.Add(shortcuts);
-        dependencyWeb.Loaded+=async (_,_)=>await EnsureDependencyWeb();reportWeb.Loaded+=async (_,_)=>await EnsureReportPreview();
+        dependencyWeb.Loaded+=async (_,_)=>await EnsureDependencyWeb();reportWeb.Loaded+=async (_,_)=>await EnsureReportPreview();chatWeb.Loaded+=async (_,_)=>await EnsureLocalChatAsync();
+        pageSurface.SizeChanged+=(_,_)=>{if(operationsRoute=="Chat local")chatWeb.Height=Math.Clamp(pageSurface.ActualHeight-330,260,560);};
         operationsPanel.Children.Add(Label("Périmètre Dataverse accessible · nouvelles fonctions en lecture seule · annotations et instantanés locaux.",13,"#536277"));
         var scope=new Grid{ColumnSpacing=18};scope.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});scope.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
         scope.Children.Add(operationsAgent);Place(scope,operationsAll,0,1);operationsPanel.Children.Add(scope);
@@ -55,13 +57,15 @@ public sealed partial class MainWindow
         }));
         var cancel=new Button{Content="Annuler"};cancel.Click+=(_,_)=>operationsCancellation?.Cancel();operationsToolbar.Children.Add(cancel);operationsToolbar.Children.Add(operationsProgress);
         operationsPanel.Children.Add(operationsToolbar);operationsPanel.Children.Add(operationsStatus);operationsPanel.Children.Add(operationsSearch);operationsPanel.Children.Add(operationsBody);content.Children.Add(operationsPanel);
-        operationsAgent.SelectionChanged+=(_,_)=>{if(operationsRefreshing)return;operationsAgentId=(operationsAgent.SelectedItem as ComboBoxItem)?.Tag as Guid?;currentDifferences.Clear();snapshotBeforeId=snapshotAfterId=null;conversationSamples.Clear();conversationWarnings.Clear();scenarioEndpoint="";targetEnvironmentAgentId=null;manualEnvironmentDiff.Clear();RenderOperations();};
+        operationsAgent.SelectionChanged+=(_,_)=>{if(operationsRefreshing)return;operationsAgentId=(operationsAgent.SelectedItem as ComboBoxItem)?.Tag as Guid?;generatedQuestions="";localAnalysis=localSecurity="";scenarioSelectedId=null;scenarioNew=false;scenarioHistoryVisible=false;currentDifferences.Clear();snapshotBeforeId=snapshotAfterId=null;conversationSamples.Clear();conversationWarnings.Clear();scenarioEndpoint="";targetEnvironmentAgentId=null;manualEnvironmentDiff.Clear();RenderOperations();};
         operationsAll.Checked+=(_,_)=>RenderOperations();operationsAll.Unchecked+=(_,_)=>RenderOperations();
         operationsSearch.TextChanged+=(_,_)=>RenderOperations();
     }
     private Button OpButton(string text,Func<CancellationToken,Task> action)
     {
-        var button=new Button{Content=text,IsEnabled=!operationsBusy,HorizontalAlignment=HorizontalAlignment.Left};
+        var primary=text is "Charger les solutions" or "Rechercher" or "Ajouter la règle" or "Charger les conversations" or "Enregistrer le dossier local" or "Lancer le diagnostic" or "Enregistrer le scénario" or "Connecter l’environnement cible" or "Analyser cet agent";
+        var button=new Button{Content=text,IsEnabled=!operationsBusy,HorizontalAlignment=HorizontalAlignment.Left,Padding=new Thickness(15,9,15,9),CornerRadius=new CornerRadius(6)};
+        if(primary){button.Background=Brush("#6357D5");button.Foreground=Brush("#FFFFFF");}
         button.Click+=async (_,_)=>await RunOperations(action);return button;
     }
     private async Task RunOperations(Func<CancellationToken,Task> action)
@@ -70,17 +74,17 @@ public sealed partial class MainWindow
         operationsBusy=true;operationsProgress.IsActive=true;operationsAgent.IsEnabled=false;operationsAll.IsEnabled=false;operationsSearch.IsEnabled=false;
         operationsCancellation?.Dispose();var source=operationsCancellation=new CancellationTokenSource();
         var session=client.SessionGeneration;
-        try {await action(source.Token);if(session==client.SessionGeneration)RenderOperations();}
+        try {await action(source.Token);}
         catch(OperationCanceledException){operationsStatus.Text="Opération annulée ; les résultats déjà collectés sont conservés.";}
-        catch(Exception ex){operationsStatus.Text=ExplorerRedaction.Safe(DescribeError(ex));}
-        finally{operationsBusy=false;operationsProgress.IsActive=false;operationsAgent.IsEnabled=true;operationsAll.IsEnabled=true;operationsSearch.IsEnabled=true;if(session==client.SessionGeneration&&operationsPanel.Visibility==Visibility.Visible)RenderOperations();}
+        catch(Exception ex){var detail=App.RecordError(ex);operationsStatus.Text=ExplorerRedaction.Safe(DescribeError(ex));await App.ShowErrorAsync(this,detail);}
+        finally{operationsBusy=false;operationsProgress.IsActive=false;operationsAgent.IsEnabled=true;operationsAll.IsEnabled=true;operationsSearch.IsEnabled=true;if(session==client.SessionGeneration&&operationsPanel.Visibility==Visibility.Visible)try{RenderOperations();}catch(Exception ex){var detail=App.RecordError(ex);operationsStatus.Text="Impossible de mettre à jour cet écran : "+ExplorerRedaction.Safe(DescribeError(ex));await App.ShowErrorAsync(this,detail);}}
     }
     private Agent OperationsAgent()=>allAgents.FirstOrDefault(x=>x.Id==operationsAgentId)??throw new InvalidOperationException("Sélectionnez un agent dans le périmètre chargé.");
     private List<AgentInspection> OperationsScope()=>operationsAll.IsChecked==true?inspections.Values.OrderBy(x=>x.Name).ToList():operationsAgentId.HasValue&&inspections.TryGetValue(operationsAgentId.Value,out var inspection)?[inspection]:[];
     private bool Match(string text)=>text.Contains(operationsSearch.Text.Trim(),StringComparison.OrdinalIgnoreCase);
     private async Task LoadOperationsInventory(CancellationToken token)
     {
-        if(!authenticated)throw new InvalidOperationException("Connectez-vous avec le bouton en haut à gauche.");
+        if(!authenticated)throw new InvalidOperationException("Connectez-vous depuis le menu du compte en bas à gauche.");
         var session=client.SessionGeneration;var loaded=await client.ListAgentsAsync();
         while(client.NextAgentsPath!=null){token.ThrowIfCancellationRequested();operationsStatus.Text=$"Inventaire : {loaded.Count} agents…";loaded.AddRange(await client.MoreAgentsAsync());}
         token.ThrowIfCancellationRequested();if(session!=client.SessionGeneration)return;
@@ -95,11 +99,11 @@ public sealed partial class MainWindow
         inspections[agent.Id]=result;
         operationsStatus.Text=$"{inspections.Count} agent(s) analysé(s) sur {allAgents.Count} chargé(s). Dernière collecte : {DateTime.Now:HH:mm:ss}.";
     }
-    private void SetOperationsSession(string username){ClearOperationsState();operationsStore=new ExplorerLocalStore(username);}
+    private void SetOperationsSession(string username){ClearOperationsState();operationsStore=new ExplorerLocalStore(username,organization:client.OrganizationUrl);}
     private void ClearOperationsState()
     {
-        operationsCancellation?.Cancel();inspections.Clear();incidentsByAgent.Clear();incidentWarnings.Clear();currentDifferences.Clear();operationsStore=null;operationsAgentId=null;
-        targetEnvironmentClient?.Dispose();targetEnvironmentClient=null;targetEnvironmentAgents.Clear();targetEnvironmentUrl="";targetEnvironmentAgentId=null;solutions.Clear();solutionComponents.Clear();searchHits.Clear();customResults.Clear();conversationSamples.Clear();conversationWarnings.Clear();manualEnvironmentDiff.Clear();advancedQuery="";conversationQuery="";scenarioEndpoint="";diagnosticResult="Diagnostic non lancé.";operationsBody.Children.Clear();reportHtml="";loadedReport="";reportNavigation?.TrySetCanceled();reportNavigation=null;dependencyReady=false;dependencyDetail.Children.Clear();
+        operationsCancellation?.Cancel();modelDownloadCancellation?.Cancel();ClearLocalChat();inspections.Clear();incidentsByAgent.Clear();incidentWarnings.Clear();currentDifferences.Clear();operationsStore=null;operationsAgentId=null;generatedQuestions="";localAnalysis=localSecurity="";questionGenerationEnabled=false;scenarioSelectedId=null;scenarioNew=false;scenarioHistoryVisible=false;scenarioFilter="";explorerAgentId=explorerExpandedAgent=null;explorerTranscripts.Clear();explorerGroups.Clear();explorerGeneration++;
+        targetEnvironmentClient?.Dispose();targetEnvironmentClient=null;targetEnvironmentAgents.Clear();targetEnvironmentUrl="";targetEnvironmentAgentId=null;solutions.Clear();solutionComponents.Clear();searchHits.Clear();customResults.Clear();conversationSamples.Clear();conversationWarnings.Clear();manualEnvironmentDiff.Clear();advancedQuery="";conversationQuery="";conversationDays=appSettings.TranscriptDays.ToString();scenarioEndpoint="";scenarioRegion=appSettings.ScenarioRegion;diagnosticResult="Diagnostic non lancé.";operationsBody.Children.Clear();reportHtml="";loadedReport="";reportNavigation?.TrySetCanceled();reportNavigation=null;dependencyReady=false;dependencyDetail.Children.Clear();
         if(dependencyWeb.CoreWebView2!=null)dependencyWeb.CoreWebView2.PostWebMessageAsJson("{\"type\":\"dependencies\",\"nodes\":[],\"edges\":[]}");
         if(reportWeb.CoreWebView2!=null)reportWeb.CoreWebView2.NavigateToString("<html><body>Session fermée</body></html>");
         operationsStatus.Text="Session fermée. Les résultats précédents ont été retirés de l’affichage.";
@@ -132,10 +136,16 @@ public sealed partial class MainWindow
     private void RenderOperations()
     {
         if(operationsPanel.Visibility!=Visibility.Visible)return;
+        operationsToolbar.Visibility=operationsRoute is "Explorateur" or "Chat local" or "Paramètres"?Visibility.Collapsed:Visibility.Visible;
+        operationsAgent.Visibility=operationsRoute is "Explorateur" or "Paramètres"?Visibility.Collapsed:Visibility.Visible;
+        if(operationsRoute=="Explorateur"&&operationsBody.Children.Contains(explorerWorkspace)){RefreshExplorerTree();RenderExplorerDetail();return;}
+        if(operationsRoute=="Chat local"&&operationsBody.Children.Contains(chatHost))return;
+        if(operationsRoute=="Dépendances"&&operationsBody.Children.Contains(dependencyHost)){RefreshDependencies();return;}
+        if(operationsRoute=="Rapports"&&operationsBody.Children.Contains(reportHost)){RefreshReports();return;}
         operationsBody.Children.Clear();
-        operationsSearch.Visibility=operationsRoute is "Dépendances" or "Rapports" or "Recherche" or "Conversations avancées" or "Diagnostic" or "Santé" or "Scénarios" or "Environnements" or "Règles" or "Dossiers" or "Évolution des risques"?Visibility.Collapsed:Visibility.Visible;
-        operationsAll.Visibility=operationsRoute is "Historique" or "Gouvernance" or "Solutions" or "Recherche" or "Conversations avancées" or "Dossiers" or "Diagnostic" or "Scénarios" or "Environnements" or "Évolution des risques"?Visibility.Collapsed:Visibility.Visible;
-        switch(operationsRoute){case "Audit":RenderSecurityAudit();break;case "Dépendances":RenderDependencies();break;case "Historique":RenderSnapshots();break;case "Incidents":RenderIncidents();break;case "Gouvernance":RenderGovernance();break;case "Rapports":RenderReports();break;default:RenderAdvanced(operationsRoute);break;}
+        operationsSearch.Visibility=operationsRoute is "Paramètres" or "Explorateur" or "Questions" or "Chat local" or "Analyse IA" or "Sécurité IA" or "Dépendances" or "Rapports" or "Recherche" or "Conversations avancées" or "Diagnostic" or "Santé" or "Scénarios" or "Environnements" or "Règles" or "Dossiers" or "Évolution des risques"?Visibility.Collapsed:Visibility.Visible;
+        operationsAll.Visibility=operationsRoute is "Paramètres" or "Explorateur" or "Questions" or "Chat local" or "Analyse IA" or "Sécurité IA" or "Historique" or "Gouvernance" or "Solutions" or "Recherche" or "Conversations avancées" or "Dossiers" or "Diagnostic" or "Scénarios" or "Environnements" or "Évolution des risques"?Visibility.Collapsed:Visibility.Visible;
+        switch(operationsRoute){case "Paramètres":RenderSettings();break;case "Explorateur":RenderExplorer();break;case "Questions":RenderQuestionGenerator();break;case "Chat local":RenderLocalChat();break;case "Analyse IA":RenderLocalReview(false);break;case "Sécurité IA":RenderLocalReview(true);break;case "Audit":RenderSecurityAudit();break;case "Dépendances":RenderDependencies();break;case "Historique":RenderSnapshots();break;case "Incidents":RenderIncidents();break;case "Gouvernance":RenderGovernance();break;case "Rapports":RenderReports();break;default:RenderAdvanced(operationsRoute);break;}
     }
     private static string FindingLabel(FindingState state)=>state switch{FindingState.Conforme=>"Conforme",FindingState.AExaminer=>"À examiner",FindingState.Risque=>"Risque",_=>"Non vérifiable"};
     private static string FindingColor(FindingState state)=>state switch{FindingState.Conforme=>"#168A45",FindingState.AExaminer=>"#B76A06",FindingState.Risque=>"#C4314B",_=>"#85838B"};
@@ -150,6 +160,7 @@ public sealed partial class MainWindow
         var scope=OperationsScope();var findings=scope.SelectMany(i=>i.Findings).ToList();
         Metrics(("Risques",findings.Count(f=>f.State==FindingState.Risque).ToString(),"#C4314B"),("À examiner",findings.Count(f=>f.State==FindingState.AExaminer).ToString(),"#B76A06"),("Conformes",findings.Count(f=>f.State==FindingState.Conforme).ToString(),"#168A45"),("Non vérifiables",findings.Count(f=>f.State==FindingState.NonVerifiable).ToString(),"#85838B"));
         operationsBody.Children.Add(Label("Audit statique de configuration · absence de signature ≠ absence de risque · les droits effectifs et protections externes ne sont pas déduits des objets Dataverse.",12,"#687080"));
+        AddAuditRuleImport();
         if(scope.Count==0)operationsBody.Children.Add(Label("Sélectionnez un agent et lancez l’analyse. Aucun contrôle n’est simulé.",16));
         var filters=new StackPanel{Orientation=Orientation.Horizontal,Spacing=12};
         var state=Options("État","Tous","Risques","À examiner","Non vérifiables","Conformes");state.SelectedIndex=auditStateFilter;
@@ -224,12 +235,12 @@ diffHost.Children.Clear();diffHost.Children.Add(Label(currentDifferences.Count+"
     }
     private void RenderIncidents()
     {
-        var sample=Options("Enregistrements de conversation par agent","100","500");
+        var sample=Options("Enregistrements de conversation par agent","50","100","250","500");sample.SelectedIndex=appSettings.IncidentSample switch{50=>0,250=>2,500=>3,_=>1};
         operationsBody.Children.Add(sample);
         operationsBody.Children.Add(OpButton("Charger les incidents du périmètre",async token=>{
             var scope=OperationsScope();if(scope.Count==0)throw new InvalidOperationException("Analysez au moins un agent.");
             var session=client.SessionGeneration;
-            foreach(var inspection in scope){operationsStatus.Text="Incidents · "+inspection.Name;var result=await client.ExplorerIncidentsAsync(inspection,sample.SelectedIndex==1?500:100,token);token.ThrowIfCancellationRequested();if(session!=client.SessionGeneration)return;incidentsByAgent[inspection.AgentId]=result.Items;incidentWarnings[inspection.AgentId]=result.Warnings;}
+            foreach(var inspection in scope){operationsStatus.Text="Incidents · "+inspection.Name;var result=await client.ExplorerIncidentsAsync(inspection,new[]{50,100,250,500}[Math.Clamp(sample.SelectedIndex,0,3)],token,appSettings.IncidentDays);token.ThrowIfCancellationRequested();if(session!=client.SessionGeneration)return;incidentsByAgent[inspection.AgentId]=result.Items;incidentWarnings[inspection.AgentId]=result.Warnings;}
         }));
         var ids=OperationsScope().Select(x=>x.AgentId).ToHashSet();var incidents=incidentsByAgent.Where(x=>ids.Contains(x.Key)).SelectMany(x=>x.Value).ToList();
         Metrics(("Erreurs observées",incidents.Count.ToString(),"#C4314B"),("Agents concernés",incidents.Select(x=>x.AgentId).Distinct().Count().ToString(),"#6357D5"),("Sources",incidents.Select(x=>x.Source).Distinct().Count().ToString(),"#0078D4"));
